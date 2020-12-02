@@ -1,8 +1,9 @@
-#Carregando bibliotecas
 library (tidyverse)
 library(tidyr)
 library (sf)
 library (ggplot2)
+library (stringi)
+library(stringr)
 
 
 #abrindo arquivo
@@ -18,9 +19,10 @@ votosmg %>%
   select(NR_ZONA, NR_SECAO, CD_CARGO_PERGUNTA, DS_CARGO_PERGUNTA, NR_PARTIDO, QT_COMPARECIMENTO,
          QT_ABSTENCOES, QT_VOTOS, NR_VOTAVEL, DS_TIPO_VOTAVEL, NM_VOTAVEL, SG_PARTIDO,
          NR_LOCAL_VOTACAO, NM_MUNICIPIO) %>% 
-  group_by(NM_VOTAVEL, NR_ZONA, NM_MUNICIPIO) %>% 
-  summarise (votos = sum(QT_VOTOS)) %>% 
-  rename(zona = NR_ZONA)->  prefeitura
+  group_by(NM_VOTAVEL, NR_SECAO, NM_MUNICIPIO) %>% 
+  summarise (votos = sum(QT_VOTOS)) ->  prefeitura
+
+glimpse(votosmg)
 
 #selecionando votos para vereadores
 votosmg %>% 
@@ -29,9 +31,10 @@ votosmg %>%
   select(NR_ZONA, NR_SECAO, CD_CARGO_PERGUNTA, DS_CARGO_PERGUNTA, NR_PARTIDO, QT_COMPARECIMENTO,
          QT_ABSTENCOES, QT_VOTOS, NR_VOTAVEL, DS_TIPO_VOTAVEL, NM_VOTAVEL, SG_PARTIDO,
          NR_LOCAL_VOTACAO, NM_MUNICIPIO) %>% 
-  group_by(NM_VOTAVEL, NR_ZONA, NM_MUNICIPIO) %>% 
+  group_by(NM_VOTAVEL, NR_SECAO,NR_ZONA, NM_MUNICIPIO) %>% 
   summarise (votos = sum(QT_VOTOS)) %>% 
-  rename(zona = NR_ZONA)-> vereadores
+  mutate(ID = paste(NR_ZONA, NR_SECAO, sep = "-")) -> vereadores
+
 
 
 #abrindo arquivo coordenadas dos locais de votação de uberlandia
@@ -39,7 +42,8 @@ votosmg %>%
 #gsheet::gsheet2tbl("https://docs.google.com/spreadsheets/d/1wBE5Ouat1xxfA5YWZX78SRBOuil7nzyN0BybBgNZ9F8/edit#gid=0")-> uberlandia
 #desconfigurou a longitude, importei manualmente para garntir que foi correto
 
-
+zonaesecao %>% 
+  rename(ID = secaozona) ->zonaesecao
 
 #baixando e importando dados do mapa de Uberlândia
 
@@ -47,40 +51,61 @@ votosmg %>%
 dir.create("shp", showWarnings = FALSE)
 
 u_ibge <- paste0(
-  "ftp://geoftp.ibge.gov.br/organizacao_do_territorio/",
-  "malhas_territoriais/malhas_municipais/",
-  "municipio_2015/UFs/MG/mg_municipios.zip", 
+  "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/malha_de_areas_de_ponderacao/censo_demografico_2010/31_MG_Minas_Gerais.zip", 
   collapse = "")
 
 httr::GET(u_ibge, 
-          httr::write_disk("shp/mg.zip"),
+          httr::write_disk("shp/31_MG_Minas_Gerais.zip", overwrite = T),
           httr::progress())
 
-#unzip("shp/mg.zip", exdir = "shp/") #tive que fazer manualmente
 
-dir("shp")
 
-municipio <- st_read("shp/31MUE250GC_SIR.shp", quiet = TRUE)
+#unzip("shp/31_MG_Minas_Gerais.zip", exdir = "shp/") #tive que fazer manualmente
 
-#formatando bancos para juntá-los
-municipio %>% 
-  rename(NM_MUNICIPIO = NM_MUNICIP ) %>%  
-  filter(NM_MUNICIPIO == "UBERLÂNDIA") -> mapaudi
+dir("shp/udi")
+
+colnames
+
+udimap <- st_read("shp/udi", quiet = TRUE) %>% 
+  rename(Codigo = CD_APONDE) %>% 
+ 
 
 
 #transformando coordenadas do planilha e Shapefile
-coords <- st_as_sf(uberlandia, 
-                   coords = c("lat", "long"), 
-                   crs = st_crs(mapaudi), 
+coords <- st_as_sf(zonaesecao, 
+                   coords = c("long", "lat"), 
+                   crs = st_crs(udimap), 
                    agr = "constant")
 
+coords %>% 
+  select(c(5,6,7)) ->coords
 
-glimpse(uberlandia)
+codigos <- unique(udimap$Codigo)
+c <- list()
+
+for (i in codigos) {
+  
+  t <- udimap %>% 
+    filter(Codigo==i)
+  
+  c[[i]] <- coords[unlist(st_contains(t, coords)),] %>% 
+    mutate(Codigo=i)
+}
+
+c2 <- c %>% bind_rows()
+
 
 #plotando o mapa
-coords%>% 
+vereadores %>% 
+  left_join(c2, by ='ID')->x %>% 
+  summarise(total=sum(votos, na.rm=T)) %>% 
+  group_by(Codigo) %>% 
+  mutate(percentual = total / sum(total, na.rm=T)) -> vere
+
+
+coords(x)
+ udimap %>% 
   ggplot()+
   geom_sf()
-  
 
   
