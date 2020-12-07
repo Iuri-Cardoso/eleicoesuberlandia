@@ -1,0 +1,139 @@
+
+#abrindo pacotes necessários
+library(tidyverse)
+library(cepespR)
+
+#importando candidatos das eleições disponiveis
+get_candidates(year= "2000,2004,2008,2012,2016,2020", 
+               position="Vereador", 
+               only_elected = TRUE) -> candidatoseleitos
+
+#olhando o número das colunas para selecioná-las
+colnames(candidatoseleitos)
+
+#abrimanuealmente a base da eleições anteriores anteriores
+
+#selecionando as colunas que serão usadas
+candidatoseleitos %>% 
+  filter (DESCRICAO_UE == "UBERLÂNDIA") %>% 
+  select(3,7,8,10,11,14,16,17,18,25,30) -> uberlandia
+
+#abrindo os dados de 2020 a partem, já que ainda não contam no banco do CEPESP
+library(readxl)
+uberlandia2020 <- read_excel("C:/Users/iuric/Downloads/uberlandia2020.xlsx", 
+                             col_types = c("numeric", "text", "text", 
+                                           "text", "numeric", "text", "text", 
+                                           "text", "text"))
+
+#Juntando os dois bancos de dados
+full_join(uberlandia, uberlandia2020)-> eleicoes
+full_join(eleicoes, antes_04_2_) -> allcandidates
+
+colnames(allcandidates)
+
+allcandidates %>% 
+  select(1,5,9,11) %>%
+  mutate(nome = case_when(NOME_CANDIDATO == "VILMAR RODRIGUES CARDOSO" ~ "PAMELA VOLP",
+                          TRUE ~ NOME_CANDIDATO)) %>% 
+  mutate(genero = case_when(nome == "PAMELA VOLP" & 
+                              DESCRICAO_SEXO == "MASCULINO" ~ "FEMININO",
+                            TRUE ~ DESCRICAO_SEXO)) %>% 
+  mutate(sexo1 = 
+           as.numeric(case_when(
+             DESCRICAO_SEXO == "MASCULINO" ~ "1",
+             DESCRICAO_SEXO == "FEMININO" ~ "2"))) %>%
+  mutate(partido = case_when(SIGLA_PARTIDO == "PEN" ~ "PATRIOTA",
+                             SIGLA_PARTIDO == "PMDB" ~ "MDB",
+                             SIGLA_PARTIDO == "PSDC" ~ "DC",
+                             SIGLA_PARTIDO == "PRB" ~ "REP",
+                             SIGLA_PARTIDO == "PMDB" ~ "MDB",
+                             SIGLA_PARTIDO == "PPS" ~ "CIDADANIA",
+                             SIGLA_PARTIDO == "PFL" ~ "DEM",
+                             SIGLA_PARTIDO == "PPB" ~ "PP",
+                             SIGLA_PARTIDO == "PPL" ~ "PCdoB",
+                             SIGLA_PARTIDO == "SOLIDARIEDADE" ~ "SD",
+                             SIGLA_PARTIDO == "PMDB" ~ "MDB",
+                             SIGLA_PARTIDO == "PR" ~ "PL",
+                             TRUE ~ SIGLA_PARTIDO))-> alleleitos
+
+
+               
+#Relação quantidade de mulheres por eleição  
+  alleleitos %>% 
+      group_by(partido, genero, ANO_ELEICAO) %>% 
+     count -> paranosex
+                       
+                       paranosex %>% 
+                         ggplot(aes(x = ANO_ELEICAO, y= n, fill = genero), position = "fill")+
+                         geom_col()+
+                         theme_classic()+
+                         scale_y_continuous(breaks = seq(0, 27, by = 2)) +
+                         scale_x_continuous(breaks = seq(1996, 2020, by = 4))+
+                         labs(x = "Ano", y= "Gênero", 
+                              title = "Gênero das pessoas eleitas em Uberlândia desde 1996",
+                              caption = "Autor: Iuri Cardoso")+
+                         scale_fill_discrete (name = "Gênero")->graf1
+                       
+                       
+                       # Quantidade de mulheres por partido desde 1996
+                       # Importante ressaltar que muitas dessas mulehres se repetiram 
+                       alleleitos %>% 
+                         group_by(partido, sexo1, genero, ANO_ELEICAO) %>% 
+                         count -> paranosex2
+                       paranosex2 %>% 
+                         filter(sexo1 == 2) %>% 
+                         group_by (partido) %>% 
+                         summarise(n) %>% 
+                         count(sum(n)) -> partygen
+                       
+                       partygen %>% 
+                         ggplot(aes(x=reorder(partido, -`sum(n)`), y=`sum(n)`))+
+                         geom_col()+
+                         theme_classic()+
+                         labs(x = "Partidos", y= "eleitas", 
+                              title = "Mulheres eleitas em Uberlândia desde 1996 por partido",
+                              caption = "Autor: Iuri Cardoso")+
+                         scale_fill_brewer()->graf2
+
+                      
+   alleleitos %>% 
+     count(genero) %>% 
+     mutate (perce= n/sum(n)*100) %>% 
+     ggplot(aes(x= perce),fill=genero, position = "fill")+
+     geom_bar()+
+     coord_flip()
+                       
+   alleleitos %>% 
+     group_by(partido) %>% 
+     count(genero) ->q  
+   q%>% 
+     ggplot( aes(x = reorder(partido, -n), y = n, fill= genero))+
+     geom_col()+
+    scale_y_continuous(breaks = seq(0, 28, by = 2))+
+     theme_classic()+
+     labs(x = "Partido", y= "número de pessoas eleitas", 
+          title = "Partido e Gênero das pessoas eleitas em Uberlândia desde 1996",
+          caption = "Autor: Iuri Cardoso")+
+     scale_fill_discrete (name = "Gênero")+
+     coord_flip()->graf3
+                       
+ggsave("graf1.jpeg")
+ggsave("graf2.jpeg")   
+ggsave("graf3.jpeg")
+allcandidates %>% 
+                         filter(DESCRICAO_SEXO == "FEMININO")->nomemulheres  
+                       unique(nomemulheres$NOME_CANDIDATO) 
+                       
+                       
+                       #nome das candidatas que ja foram eleitas, alterei manualmente
+                       #o nome e sexo de Pamela Volp, que estava errado
+                       mulhereslist <- c ("MARIA JERONIMA BATISTA CARLESSO",       "LIZA FERNANDES PRADO"                 
+                                          "GLÁUCIA GALANTE BUÍSSA"               
+                                          "MICHELE GUIMARÃES BRETAS",              "FLAVIA CARVALHO"                      
+                                          "JUSSARA MENDES LOPES MATSUDA",          "AMANDA THAYLASSA GONDIM FERREIRA"     
+                                          "GILVAN DE MELO MACHADO",                "THAIS ANDRADE SILVA"                  
+                                          "GLAUCIA GALANTE BUISSA",                "DANDARA TONANTZIN SILVA CASTRO"       
+                                          "CLÁUDIA COSTA GUERRA"                  "ADRIANA ALVES RIBEIRO"                
+                                          "MARIA DE FATIMA VIEIRA PAIVA OLIVEIRA"
+                                          
+                          
